@@ -1,0 +1,76 @@
+// ============================================================
+// DAX – Calculated Columns
+//
+// These columns are added directly to their respective tables
+// (not to the _Measures container) inside the Power BI model.
+// ============================================================
+
+
+// ────────────────────────────────────────────────────────────
+// Table: Transactions
+// ────────────────────────────────────────────────────────────
+
+// 1. AmountSign – normalises sign for waterfall charts.
+//    Income  →  positive
+//    Expense →  negative
+//    Transfer → 0 (excluded from net P&L)
+Transactions[AmountSigned] =
+    SWITCH(
+        Transactions[Type],
+        "Income",   Transactions[Amount],
+        "Expense", -Transactions[Amount],
+        0
+    )
+
+// 2. MonthYear – short label for x-axis (e.g. "Jan 2024")
+Transactions[MonthYear] =
+    FORMAT( Transactions[Date], "MMM YYYY" )
+
+// 3. YearMonth – integer sort key (YYYYMM)
+Transactions[YearMonth] =
+    YEAR( Transactions[Date] ) * 100
+        + MONTH( Transactions[Date] )
+
+// 4. IsLargeExpense – flags expenses above $500 for drill-through
+Transactions[IsLargeExpense] =
+    IF(
+        Transactions[Type] = "Expense"
+            && Transactions[Amount] > 500,
+        "Large Expense",
+        "Regular"
+    )
+
+// 5. WeekdayNum – used to order weekday slicer correctly
+Transactions[WeekdayNum] =
+    WEEKDAY( Transactions[Date], 2 )   // 1 = Mon … 7 = Sun
+
+
+// ────────────────────────────────────────────────────────────
+// Table: Calendar
+// ────────────────────────────────────────────────────────────
+
+// 6. FiscalYear – assumes fiscal year starts in April
+//    (April–March; adjust month boundary as needed)
+//    Format: "FY2024/2025" (4-digit years for clarity)
+Calendar[FiscalYear] =
+    IF(
+        Calendar[Month] >= 4,
+        "FY" & TEXT( Calendar[Year],     "0000" ) & "/" & TEXT( Calendar[Year] + 1, "0000" ),
+        "FY" & TEXT( Calendar[Year] - 1, "0000" ) & "/" & TEXT( Calendar[Year],     "0000" )
+    )
+
+// 7. FiscalQuarter (FQ1-FQ4, April-based)
+Calendar[FiscalQuarter] =
+    "FQ" & TEXT(
+        MOD( Calendar[Month] - 4 + 12, 12 ) / 3 + 1,
+        "0"
+    )
+
+
+// ────────────────────────────────────────────────────────────
+// Table: Budget
+// ────────────────────────────────────────────────────────────
+
+// 8. MonthYear label on Budget table for cross-filtering
+Budget[MonthYear] =
+    FORMAT( Budget[Date], "MMM YYYY" )
