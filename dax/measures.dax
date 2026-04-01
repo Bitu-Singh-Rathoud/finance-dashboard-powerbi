@@ -1,0 +1,323 @@
+// ============================================================
+// DAX Measures – Personal Finance Dashboard
+//
+// Table: _Measures  (a hidden, empty calculated table used
+//                    purely as a container for all measures)
+//
+// Section layout
+// ──────────────
+//  A. Base aggregations
+//  B. Income KPIs
+//  C. Expense KPIs
+//  D. Savings KPIs
+//  E. Budget vs Actuals
+//  F. Month-over-Month comparisons
+//  G. Year-to-Date (YTD) measures
+//  H. Running totals
+//  I. Dynamic KPI titles & formatting helpers
+// ============================================================
+
+
+// ============================================================
+// A. BASE AGGREGATIONS
+// ============================================================
+
+// Total amount of all transactions in the current filter context
+Total Amount =
+    SUM( Transactions[Amount] )
+
+// Count of transactions
+Transaction Count =
+    COUNTROWS( Transactions )
+
+
+// ============================================================
+// B. INCOME KPIs
+// ============================================================
+
+// Total income (Type = "Income")
+Total Income =
+    CALCULATE(
+        [Total Amount],
+        Transactions[Type] = "Income"
+    )
+
+// Income for the selected month only
+Income This Month =
+    CALCULATE(
+        [Total Income],
+        DATESMTD( Calendar[Date] )
+    )
+
+// Average monthly income across all months in scope
+Avg Monthly Income =
+    AVERAGEX(
+        VALUES( Calendar[YearMonth] ),
+        CALCULATE( [Total Income] )
+    )
+
+
+// ============================================================
+// C. EXPENSE KPIs
+// ============================================================
+
+// Total expenses (Type = "Expense")
+Total Expenses =
+    CALCULATE(
+        [Total Amount],
+        Transactions[Type] = "Expense"
+    )
+
+// Expenses for the selected month only
+Expenses This Month =
+    CALCULATE(
+        [Total Expenses],
+        DATESMTD( Calendar[Date] )
+    )
+
+// Average monthly expenses
+Avg Monthly Expenses =
+    AVERAGEX(
+        VALUES( Calendar[YearMonth] ),
+        CALCULATE( [Total Expenses] )
+    )
+
+// Top expense category (returns category name as a string)
+Top Expense Category =
+    CALCULATE(
+        FIRSTNONBLANK( Transactions[CategoryName], 1 ),
+        TOPN(
+            1,
+            SUMMARIZE(
+                FILTER( Transactions, Transactions[Type] = "Expense" ),
+                Transactions[CategoryName],
+                "@amt", SUM( Transactions[Amount] )
+            ),
+            [@amt], DESC
+        )
+    )
+
+
+// ============================================================
+// D. SAVINGS KPIs
+// ============================================================
+
+// Net savings = Income − Expenses
+Net Savings =
+    [Total Income] - [Total Expenses]
+
+// Savings rate (%) = Net Savings / Total Income
+Savings Rate % =
+    DIVIDE( [Net Savings], [Total Income], 0 )
+
+// Savings rate formatted as percentage label
+Savings Rate Label =
+    FORMAT( [Savings Rate %], "0.0%" )
+
+// Net savings for the selected month
+Net Savings This Month =
+    CALCULATE(
+        [Net Savings],
+        DATESMTD( Calendar[Date] )
+    )
+
+// Transfers to savings account
+Total Transfers to Savings =
+    CALCULATE(
+        [Total Amount],
+        Transactions[Type] = "Transfer"
+    )
+
+
+// ============================================================
+// E. BUDGET vs ACTUALS
+// ============================================================
+
+// Total budget for the selected filter context
+Total Budget =
+    SUM( Budget[BudgetAmount] )
+
+// Budget variance = Budget − Actual Expenses
+Budget Variance =
+    [Total Budget] - [Total Expenses]
+
+// Budget variance % = Variance / Budget
+Budget Variance % =
+    DIVIDE( [Budget Variance], [Total Budget], 0 )
+
+// Budget utilisation % = Actual / Budget
+Budget Utilisation % =
+    DIVIDE( [Total Expenses], [Total Budget], 0 )
+
+// Conditional label: "Over Budget" / "On Track" / "Under Budget"
+Budget Status =
+    VAR _util = [Budget Utilisation %]
+    RETURN
+        SWITCH(
+            TRUE(),
+            _util > 1,        "Over Budget",
+            _util >= 0.9,     "On Track",
+                              "Under Budget"
+        )
+
+
+// ============================================================
+// F. MONTH-OVER-MONTH (MoM) COMPARISONS
+// ============================================================
+
+// Income in the previous month
+Income Previous Month =
+    CALCULATE(
+        [Total Income],
+        DATEADD( Calendar[Date], -1, MONTH )
+    )
+
+// Expenses in the previous month
+Expenses Previous Month =
+    CALCULATE(
+        [Total Expenses],
+        DATEADD( Calendar[Date], -1, MONTH )
+    )
+
+// MoM income change (absolute)
+Income MoM Change =
+    [Total Income] - [Income Previous Month]
+
+// MoM expense change (absolute)
+Expenses MoM Change =
+    [Total Expenses] - [Expenses Previous Month]
+
+// MoM income change %
+Income MoM % =
+    DIVIDE( [Income MoM Change], [Income Previous Month], 0 )
+
+// MoM expense change %
+Expenses MoM % =
+    DIVIDE( [Expenses MoM Change], [Expenses Previous Month], 0 )
+
+// Display-ready MoM expense label with arrow
+Expenses MoM Label =
+    VAR _pct = [Expenses MoM %]
+    RETURN
+        IF(
+            ISBLANK( _pct ),
+            "–",
+            IF( _pct > 0, "▲ ", "▼ " ) & FORMAT( ABS( _pct ), "0.0%" )
+        )
+
+
+// ============================================================
+// G. YEAR-TO-DATE (YTD) MEASURES
+// ============================================================
+
+// YTD Income
+Income YTD =
+    CALCULATE(
+        [Total Income],
+        DATESYTD( Calendar[Date] )
+    )
+
+// YTD Expenses
+Expenses YTD =
+    CALCULATE(
+        [Total Expenses],
+        DATESYTD( Calendar[Date] )
+    )
+
+// YTD Net Savings
+Net Savings YTD =
+    CALCULATE(
+        [Net Savings],
+        DATESYTD( Calendar[Date] )
+    )
+
+// YTD Budget
+Budget YTD =
+    CALCULATE(
+        [Total Budget],
+        DATESYTD( Calendar[Date] )
+    )
+
+// YTD Budget Variance
+Budget Variance YTD =
+    [Budget YTD] - [Expenses YTD]
+
+
+// ============================================================
+// H. RUNNING TOTALS (for cumulative area / line charts)
+// ============================================================
+
+// Cumulative income from start of year
+Cumulative Income =
+    CALCULATE(
+        [Total Income],
+        FILTER(
+            ALL( Calendar[Date] ),
+            Calendar[Date] <= MAX( Calendar[Date] )
+                && YEAR( Calendar[Date] ) = YEAR( MAX( Calendar[Date] ) )
+        )
+    )
+
+// Cumulative expenses from start of year
+Cumulative Expenses =
+    CALCULATE(
+        [Total Expenses],
+        FILTER(
+            ALL( Calendar[Date] ),
+            Calendar[Date] <= MAX( Calendar[Date] )
+                && YEAR( Calendar[Date] ) = YEAR( MAX( Calendar[Date] ) )
+        )
+    )
+
+// Cumulative net savings from start of year
+Cumulative Net Savings =
+    [Cumulative Income] - [Cumulative Expenses]
+
+
+// ============================================================
+// I. DYNAMIC KPI TITLES & FORMATTING HELPERS
+// ============================================================
+
+// Returns the currently selected year as a string (or "All Years")
+Selected Year Label =
+    VAR _years = VALUES( Calendar[Year] )
+    RETURN
+        IF(
+            COUNTROWS( _years ) = 1,
+            FORMAT( SELECTEDVALUE( Calendar[Year] ), "0" ),
+            "All Years"
+        )
+
+// Returns the currently selected month name (or "All Months")
+Selected Month Label =
+    VAR _months = VALUES( Calendar[MonthName] )
+    RETURN
+        IF(
+            COUNTROWS( _months ) = 1,
+            SELECTEDVALUE( Calendar[MonthName] ),
+            "All Months"
+        )
+
+// Dynamic card title: "Income – Jan 2024"
+KPI Income Title =
+    "Income – " & [Selected Month Label] & " " & [Selected Year Label]
+
+// Dynamic card title: "Expenses – Jan 2024"
+KPI Expenses Title =
+    "Expenses – " & [Selected Month Label] & " " & [Selected Year Label]
+
+// Dynamic card title: "Net Savings – Jan 2024"
+KPI Savings Title =
+    "Net Savings – " & [Selected Month Label] & " " & [Selected Year Label]
+
+// Currency-formatted income label
+Income Display =
+    FORMAT( [Total Income], "$#,##0.00" )
+
+// Currency-formatted expense label
+Expenses Display =
+    FORMAT( [Total Expenses], "$#,##0.00" )
+
+// Currency-formatted net savings label
+Net Savings Display =
+    FORMAT( [Net Savings], "$#,##0.00" )

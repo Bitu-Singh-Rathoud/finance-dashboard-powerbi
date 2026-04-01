@@ -1,0 +1,15 @@
+CategoryID,CategoryName,Type
+1,Housing,Expense
+2,Groceries,Expense
+3,Utilities,Expense
+4,Transport,Expense
+5,Dining Out,Expense
+6,Entertainment,Expense
+7,Healthcare,Expense
+8,Shopping,Expense
+9,Education,Expense
+10,Savings,Transfer
+11,Salary,Income
+12,Freelance,Income
+13,Investment,Income
+14,Other Income,Income
